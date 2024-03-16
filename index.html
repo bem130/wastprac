@@ -8,9 +8,12 @@
     </head>
     <body>
         <h1>WebAssembly Playground</h1>
-        <div id="input" class="spread"></div>
-        <div id="err"></div>
-        <div id="stdout"></div>
+        <div id="input" class="input"></div>
+        <button onclick="update()">Run</button>
+        <div class="output" readonly>
+            <table id="wasm"></table>
+        </div>
+        <textarea id="stdout" class="output" readonly></textarea>
     </body>
 </html>
 <script>
@@ -23,7 +26,7 @@ function wasi_fd_write(fd,iovs,iovsLen,nwritten) {
         const ptr = iovs+i*8;
         const buf = new Uint8Array(memory,view.getUint32(ptr,true),view.getUint32(ptr+4,true));
         const msg = new TextDecoder("utf-8").decode(buf);
-        document.getElementById('stdout').innerText += msg;
+        document.getElementById('stdout').value += msg;
         return buf.byteLength;
     })
     const totalSize = sizeList.reduce((acc,v)=>acc+v);
@@ -44,6 +47,7 @@ function fRead(filename) {
 };
 window.onload = ()=>{
     input.setValue(fRead("sample.wat"));
+    update();
 }
 
 const wasi = {
@@ -56,16 +60,58 @@ const wasi = {
     }
 }
 
+function showHex(elm,data) {
+    elm.innerHTML = "";
+    {
+        let tr = document.createElement("tr");
+        elm.appendChild(tr);
+        {
+            let th = document.createElement("th");
+            tr.appendChild(th);
+            th.innerText = "adr";
+        }
+        for (let j=0;j<16;j++) {
+            let th = document.createElement("th");
+            tr.appendChild(th);
+            th.innerText = ("0"+j.toString(16)).slice(-2);
+        }
+    }
+    for (let i=0;i<=data.length/16;i++) {
+        let tr = document.createElement("tr");
+        elm.appendChild(tr);
+        {
+            let th = document.createElement("th");
+            tr.appendChild(th);
+            th.innerText = ("0000"+i.toString(16)+"0").slice(-6);
+        }
+        for (let j=0;(j<16&&i*16+j<data.length);j++) {
+            let td = document.createElement("td");
+            tr.appendChild(td);
+            td.innerText = ("0"+data[i*16+j].toString(16)).slice(-2);
+        }
+    }
+}
+
 async function main(wast) {
     let wabt = await WabtModule();
-    const wasmModule = wabt.parseWat("main.wat", wast);
+    const wasmModule = (()=>{
+        try {
+            return wabt.parseWat("main.wat", wast);
+        }
+        catch (err)
+        {
+            document.getElementById("stdout").value = err.toString();
+            throw console.error(err);
+        }
+    })();
     const { buffer } = wasmModule.toBinary({});
-    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{console.log(res);wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);document.getElementById("err").innerText=err.toString()});
+    showHex(document.getElementById('wasm'),buffer);
+    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{console.log(res);wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);document.getElementById("stdout").value=err.toString()});
 }
 
 function update() {
-    document.getElementById('stdout').innerHTML = "";
-    document.getElementById('err').innerHTML = "";
+    showHex(document.getElementById('wasm'),[]);
+    document.getElementById('stdout').value = "";
     main(input.getValue());
 }
 
@@ -79,17 +125,45 @@ require(["vs/editor/editor.main"], function () {
         automaticLayout: true,
         tabSize: 4,
     });
-    input.getModel().onDidChangeContent((e)=>{
-        update();
-    });
 });
 </script>
 <style>
     body {
-        background-color: rgb(0, 29, 54);
         color: white;
+        background-color: rgb(0, 29, 54);
     }
-    .spread {
-        height: 500px;
+    button {
+        color: white;
+        background-color: rgb(49, 49, 49);
+        width: 100px;
+        height: 30px;
+        border-radius: 10px;
+        border: 1px solid gray;
+    }
+    .input {
+        height: calc(40dvh - 80px);
+    }
+    .output {
+        color: white;
+        font-family: Consolas, "Courier New", monospace;
+        background-color: rgb(30, 30, 30);
+        width: calc(100% - 30px);
+        height: calc(25dvh);
+        outline: none;
+        border: none;
+        resize: none;
+        padding: 10px;
+        overflow: auto;
+    }
+    table {
+        font-family: Courier, monospace;
+        & td {
+            padding-right: 3px;
+            padding-left: 3px;
+        }
+        & th {
+            color: rgba(255, 255, 255, 0.3);
+            user-select: none;
+        }
     }
 </style>
