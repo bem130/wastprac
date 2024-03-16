@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/editor/editor.main.min.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
+        <script src="https://unpkg.com/wabt@1.0.32/index.js"></script>
+    </head>
+    <body>
+        <h1>WebAssembly Playground</h1>
+        <div id="input" class="spread"></div>
+        <div id="err"></div>
+        <div id="stdout"></div>
+    </body>
+</html>
+<script>
+
+function wasi_fd_write(fd,iovs,iovsLen,nwritten) {
+    console.info(`call fd_write: fd=${fd}, iovs=${iovs}, iovsLen=${iovsLen}, nwritten=${nwritten}`)
+    const memory = wasi.wasmInstance.exports.memory.buffer;
+    const view = new DataView(memory);
+    const sizeList = Array.from(Array(iovsLen), (v, i) => {
+        const ptr = iovs+i*8;
+        const buf = new Uint8Array(memory,view.getUint32(ptr,true),view.getUint32(ptr+4,true));
+        const msg = new TextDecoder("utf-8").decode(buf);
+        document.getElementById('stdout').innerText += msg;
+        return buf.byteLength;
+    })
+    const totalSize = sizeList.reduce((acc,v)=>acc+v);
+    view.setUint32(nwritten,totalSize,true);
+    return 0;
+}
+
+function fRead(filename) {
+    var hr = new XMLHttpRequest();
+    hr.open("GET", filename, false);
+    hr.send(null);
+    if (hr.status == 200 || hr.status == 304) {
+        return hr.responseText.replace(/\r\n/g, "\n");
+    }
+    else {
+        throw "err " + filename;
+    }
+};
+window.onload = ()=>{
+    input.setValue(fRead("sample.wat"));
+}
+
+const wasi = {
+    wasmInstance: null,
+    importObject: {
+        wasi_unstable: {
+            fd_write: wasi_fd_write,
+            proc_exit: () => {},
+        }
+    }
+}
+
+async function main(wast) {
+    let wabt = await WabtModule();
+    const wasmModule = wabt.parseWat("main.wat", wast);
+    const { buffer } = wasmModule.toBinary({});
+    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{console.log(res);wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);document.getElementById("err").innerText=err.toString()});
+}
+
+function update() {
+    document.getElementById('stdout').innerHTML = "";
+    document.getElementById('err').innerHTML = "";
+    main(input.getValue());
+}
+
+require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' } });
+require(["vs/editor/editor.main"], function () {
+    input = monaco.editor.create(document.querySelector("#input"),{
+        readOnly: false,
+        theme: "vs-dark",
+        roundedSelection: true,
+        lineNumbers: "on",
+        automaticLayout: true,
+        tabSize: 4,
+    });
+    input.getModel().onDidChangeContent((e)=>{
+        update();
+    });
+});
+</script>
+<style>
+    body {
+        background-color: rgb(0, 29, 54);
+        color: white;
+    }
+    .spread {
+        height: 500px;
+    }
+</style>
