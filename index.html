@@ -195,19 +195,12 @@ require(["vs/editor/editor.main"], function () {
         colors: {},
     });
 
-    // input = monaco.editor.create(document.querySelector("#input"),{
-    //     readOnly: false,
-    //     languages: "wast",
-    //     theme: "myTheme",
-    //     roundedSelection: true,
-    //     lineNumbers: "on",
-    //     automaticLayout: true,
-    //     tabSize: 4,
-    // });
     input = monaco.editor.create(document.querySelector("#input"),{
         language: "wast",
         theme: "myTheme",
+        automaticLayout: true,
         wordWrap: true,
+        tabSize: 4,
     });
 });
 </script>
