@@ -153,7 +153,13 @@ async function main(wast) {
     const { buffer } = wasmModule.toBinary({});
     showHex(document.getElementById('wasm'),buffer);
     showHexDecodeUTF8(document.getElementById('wasm_utf8'),buffer);
-    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{console.log(res);wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);document.getElementById("stdout").value=err.toString()});
+    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{
+        console.log(res);
+        wasi.wasmInstance=res.instance;
+        wasi.wasmInstance.exports._start();
+        console.log(new Uint8Array(wasi.wasmInstance.exports.memory.buffer));
+        console.log(new Uint32Array(wasi.wasmInstance.exports.memory.buffer));
+    }).catch((err)=>{console.error(err);document.getElementById("stdout").value=err.toString()});
 }
 
 function update() {
@@ -179,8 +185,9 @@ require(["vs/editor/editor.main"], function () {
                 [/'(\\.|[^"\\])*'/, "string"],
                 [/0[xX][0-9a-fA-F]+/, 'number'],
                 [/\d+/, 'number'],
-                [/\$([a-z]|_)*/, "variable"],
+                [/\$([0-9a-zA-Z]|_)*/, "variable"],
                 [/(module|import|export|memory|data|func|call|param|result)/, "keyword"],
+                [/(br_if|br|if|then|block|loop)/, "keyword.control"],
                 [/(local|global)/, "type"],
                 [/(i32|i64|f32|f64)/, "type"],
                 [/;;.*/, 'comment'],
@@ -199,7 +206,7 @@ require(["vs/editor/editor.main"], function () {
         language: "wast",
         theme: "myTheme",
         automaticLayout: true,
-        wordWrap: true,
+        wordWrap: false,
         tabSize: 4,
     });
 });
