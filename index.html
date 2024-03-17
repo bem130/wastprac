@@ -120,7 +120,6 @@ function showHexDecodeUTF8(elm,data) {
 }
 
 function utf8toStr(data) {
-    console.log(data[0],(data[0]>>7).toString(2));
     if ((data[0]>>7)==0b0) {
         return new TextDecoder("utf-8").decode(data.slice(0,1));
     }
@@ -165,14 +164,50 @@ function update() {
 }
 
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs' } });
+
 require(["vs/editor/editor.main"], function () {
+
+    monaco.languages.register({ id: "wast" });
+    monaco.languages.setMonarchTokensProvider("wast", {
+        brackets: [
+            { token: 'delimiter.parenthesis', open: '(', close: ')' },
+        ],
+        tokenizer: {
+            root: [
+                [/[{}()<>\[\]]/, '@brackets'],
+                [/"(\\.|[^"\\])*"/, "string"],
+                [/'(\\.|[^"\\])*'/, "string"],
+                [/0[xX][0-9a-fA-F]+/, 'number'],
+                [/\d+/, 'number'],
+                [/\$([a-z]|_)*/, "variable"],
+                [/(module|import|export|memory|data|func|call|param|result)/, "keyword"],
+                [/(local|global)/, "type"],
+                [/(i32|i64|f32|f64)/, "type"],
+                [/;;.*/, 'comment'],
+            ],
+        },
+    });
+    monaco.editor.defineTheme("myTheme", {
+        base: "vs-dark",
+        inherit: true,
+        rules: [
+        ],
+        colors: {},
+    });
+
+    // input = monaco.editor.create(document.querySelector("#input"),{
+    //     readOnly: false,
+    //     languages: "wast",
+    //     theme: "myTheme",
+    //     roundedSelection: true,
+    //     lineNumbers: "on",
+    //     automaticLayout: true,
+    //     tabSize: 4,
+    // });
     input = monaco.editor.create(document.querySelector("#input"),{
-        readOnly: false,
-        theme: "vs-dark",
-        roundedSelection: true,
-        lineNumbers: "on",
-        automaticLayout: true,
-        tabSize: 4,
+        language: "wast",
+        theme: "myTheme",
+        wordWrap: true,
     });
 });
 </script>
