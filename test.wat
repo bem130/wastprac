@@ -1,7 +1,7 @@
 (module
     (import "wasi_unstable" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
 
-    (memory 10)
+    (memory 1)
     (export "memory" (memory 0))
     (data (i32.const 16) "a\E3\81\82bcdefg")
 
