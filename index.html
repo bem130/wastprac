@@ -10,8 +10,9 @@
         <h1>WebAssembly Playground</h1>
         <div id="input" class="input"></div>
         <button onclick="update()">Run</button>
-        <div class="output" readonly>
+        <div id="hexviewer" class="output" readonly>
             <table id="wasm"></table>
+            <table id="wasm_utf8"></table>
         </div>
         <textarea id="stdout" class="output" readonly></textarea>
     </body>
@@ -60,36 +61,82 @@ const wasi = {
     }
 }
 
+function encodeString(text) {
+    return Array.from(new TextEncoder("utf-8").encode(text)).map((x)=>{return "\\"+("0"+x.toString(16)).slice(-2)}).join("");
+}
+
 function showHex(elm,data) {
     elm.innerHTML = "";
     {
-        let tr = document.createElement("tr");
+        const tr = document.createElement("tr");
         elm.appendChild(tr);
         {
-            let th = document.createElement("th");
+            const th = document.createElement("th");
             tr.appendChild(th);
             th.innerText = "adr";
         }
         for (let j=0;j<16;j++) {
-            let th = document.createElement("th");
+            const th = document.createElement("th");
             tr.appendChild(th);
             th.innerText = ("0"+j.toString(16)).slice(-2);
         }
     }
     for (let i=0;i<=data.length/16;i++) {
-        let tr = document.createElement("tr");
+        const tr = document.createElement("tr");
         elm.appendChild(tr);
         {
-            let th = document.createElement("th");
+            const th = document.createElement("th");
             tr.appendChild(th);
             th.innerText = ("0000"+i.toString(16)+"0").slice(-6);
         }
         for (let j=0;(j<16&&i*16+j<data.length);j++) {
-            let td = document.createElement("td");
+            const td = document.createElement("td");
             tr.appendChild(td);
             td.innerText = ("0"+data[i*16+j].toString(16)).slice(-2);
         }
     }
+}
+function showHexDecodeUTF8(elm,data) {
+    elm.innerHTML = "";
+    {
+        const tr = document.createElement("tr");
+        elm.appendChild(tr);
+        for (let j=0;j<16;j++) {
+            const th = document.createElement("th");
+            tr.appendChild(th);
+            th.innerText = ("0"+j.toString(16)).slice(-2);
+        }
+    }
+    for (let i=0;i<=data.length/16;i++) {
+        const tr = document.createElement("tr");
+        elm.appendChild(tr);
+        for (let j=0;(j<16&&i*16+j<data.length);j++) {
+            const td = document.createElement("td");
+            tr.appendChild(td);
+            const ptr = i*16+j;
+            td.innerText = utf8toStr(data.slice(ptr,ptr+4));
+        }
+    }
+}
+
+function utf8toStr(data) {
+    console.log(data[0],(data[0]>>7).toString(2));
+    if ((data[0]>>7)==0b0) {
+        return new TextDecoder("utf-8").decode(data.slice(0,1));
+    }
+    else if ((data[0]>>6)==0b10) {
+        return "";
+    }
+    else if ((data[0]>>5)==0b110) {
+        return new TextDecoder("utf-8").decode(data.slice(0,2));
+    }
+    else if ((data[0]>>4)==0b1110) {
+        return new TextDecoder("utf-8").decode(data.slice(0,3));
+    }
+    else if ((data[0]>>3)==0b11110) {
+        return new TextDecoder("utf-8").decode(data.slice(0,4));
+    }
+    return "";
 }
 
 async function main(wast) {
@@ -106,11 +153,13 @@ async function main(wast) {
     })();
     const { buffer } = wasmModule.toBinary({});
     showHex(document.getElementById('wasm'),buffer);
+    showHexDecodeUTF8(document.getElementById('wasm_utf8'),buffer);
     WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{console.log(res);wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);document.getElementById("stdout").value=err.toString()});
 }
 
 function update() {
     showHex(document.getElementById('wasm'),[]);
+    showHexDecodeUTF8(document.getElementById('wasm_utf8'),[]);
     document.getElementById('stdout').value = "";
     main(input.getValue());
 }
@@ -155,15 +204,18 @@ require(["vs/editor/editor.main"], function () {
         padding: 10px;
         overflow: auto;
     }
-    table {
-        font-family: Courier, monospace;
-        & td {
-            padding-right: 3px;
-            padding-left: 3px;
-        }
-        & th {
-            color: rgba(255, 255, 255, 0.3);
-            user-select: none;
+    #hexviewer {
+        display: flex;
+        & table {
+            font-family: Courier, monospace;
+            & td {
+                padding-right: 3px;
+                padding-left: 3px;
+            }
+            & th {
+                color: rgba(255, 255, 255, 0.3);
+                user-select: none;
+            }
         }
     }
 </style>
