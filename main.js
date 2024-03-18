@@ -7,16 +7,25 @@ const inputWat = process.argv[2];
 wabt().then(async function(wabt) {
     const wasmModule = wabt.parseWat(inputWat, fs.readFileSync(inputWat, "utf8"));
     const { buffer } = wasmModule.toBinary({});
-    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{wasi.wasmInstance=res.instance;wasi.wasmInstance.exports._start()}).catch((err)=>{console.error(err);});
+    
+    WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{
+        wasi.wasmInstance=res.instance;
+        wasi.wasmInstance.exports._start?wasi.wasmInstance.exports._start():wasi.wasmInstance.exports.main?wasi.wasmInstance.exports.main():(()=>{throw `Entry point not Found: _start() or main()`})();
+    }).catch((err)=>{console.error(err);});
 });
 
+const WASI_importObject = {
+    fd_write: wasi_fd_write,
+    proc_exit: () => {},
+}
 const wasi = {
     wasmInstance: null,
     importObject: {
-        wasi_unstable: {
-            fd_write: wasi_fd_write,
-            proc_exit: () => {},
-        }
+        wasi_unstable: WASI_importObject,
+        wasi_snapshot_preview1: WASI_importObject,
+        env: {
+            emscripten_memcpy_big: () => {},
+        },
     },
 }
 

@@ -7,16 +7,71 @@
         <script src="https://unpkg.com/wabt@1.0.32/index.js"></script>
     </head>
     <body>
-        <h1>WebAssembly Playground</h1>
-        <div id="input" class="input"></div>
-        <button onclick="update()">Run</button>
-        <div id="hexviewer" class="output" readonly>
-            <table id="wasm"></table>
-            <table id="wasm_utf8"></table>
+        <div class="resizer_Hcontainer" id="mainarea" data-proportion="4:3">
+            <div class="resizer_content">
+                <div id="input" class="input"></div>
+                <button onclick="update()">Run</button>
+            </div>
+            <div class="resizer_splitter"></div>
+            <div class="resizer_content">
+                <div class="resizer_Vcontainer" data-proportion="4:3">
+                    <div class="resizer_content">
+                        <div id="hexviewer" class="output" readonly>
+                            <table id="wasm"></table>
+                            <table id="wasm_utf8"></table>
+                        </div>
+                    </div>
+                    <div class="resizer_splitter"></div>
+                    <div class="resizer_content">
+                        <textarea id="stdout" class="output" readonly></textarea>
+                    </div>
+                </div>
+            </div>
         </div>
-        <textarea id="stdout" class="output" readonly></textarea>
     </body>
 </html>
+<script>
+function resizer_Vcontainer_addEL (container,framesMin,callback=()=>{}) {
+    container.querySelector(":scope > .resizer_splitter").addEventListener("pointerdown",(e)=>{
+        let resizer = container.querySelector(":scope > .resizer_splitter").getBoundingClientRect();
+        let resizerW = resizer.bottom - resizer.top;
+        let resize = (e)=>{
+            let containerRect = container.getBoundingClientRect();
+            let y = ((n,min,max)=>{if (n<min) {n=min}else if (n>max) {n=max};return n;})(e.y-containerRect.y,framesMin,containerRect.height-resizerW-framesMin);
+            container.querySelectorAll(":scope > .resizer_content")[0].style.flexBasis = `${y}%`;
+            container.querySelectorAll(":scope > .resizer_content")[1].style.flexBasis = `${containerRect.height-resizerW-y}%`;
+            callback();
+        }
+        document.addEventListener("pointermove",resize,false);
+        document.addEventListener("pointerup",()=>{document.removeEventListener("pointermove",resize,false);},false);
+        e.target.setPointerCapture(e.pointerId);
+    });
+    let p = container.dataset["proportion"].split(":").map((x)=>{return Number(x);});
+    container.querySelectorAll(":scope > .resizer_content")[0].style.flexBasis = `${(p[0]*100/(p[0]+p[1]))}%`;
+    container.querySelectorAll(":scope > .resizer_content")[1].style.flexBasis = `${(p[1]*100/(p[0]+p[1]))}%`;
+}
+function resizer_Hcontainer_addEL (container,framesMin,callback=()=>{}) {
+    container.querySelector(":scope > .resizer_splitter").addEventListener("pointerdown",(e)=>{
+        let resizer = container.querySelector(":scope > .resizer_splitter").getBoundingClientRect();
+        let resizerW = resizer.right - resizer.left;
+        let resize = (e)=>{
+            let containerRect = container.getBoundingClientRect();
+            let x = ((n,min,max)=>{if (n<min) {n=min}else if (n>max) {n=max};return n;})(e.x-containerRect.x,framesMin,containerRect.width-resizerW-framesMin);
+            container.querySelectorAll(":scope > .resizer_content")[0].style.flexBasis = `${x}%`;
+            container.querySelectorAll(":scope > .resizer_content")[1].style.flexBasis = `${containerRect.width-resizerW-x}%`;
+            callback();
+        }
+        document.addEventListener("pointermove",resize,false);
+        document.addEventListener("pointerup",()=>{document.removeEventListener("pointermove",resize,false);},false);
+        e.target.setPointerCapture(e.pointerId);
+    });
+    let p = container.dataset["proportion"].split(":").map((x)=>{return Number(x);});
+    container.querySelectorAll(":scope > .resizer_content")[0].style.flexBasis = `${(p[0]*100/(p[0]+p[1]))}%`;
+    container.querySelectorAll(":scope > .resizer_content")[1].style.flexBasis = `${(p[1]*100/(p[0]+p[1]))}%`;
+}
+document.querySelectorAll(".resizer_Vcontainer").forEach((x)=>{resizer_Vcontainer_addEL(x,50);})
+document.querySelectorAll(".resizer_Hcontainer").forEach((x)=>{resizer_Hcontainer_addEL(x,50);})
+</script>
 <script>
 
 function wasi_fd_write(fd,iovs,iovsLen,nwritten) {
@@ -51,14 +106,19 @@ window.onload = ()=>{
     update();
 }
 
+const WASI_importObject = {
+    fd_write: wasi_fd_write,
+    proc_exit: () => {},
+}
 const wasi = {
     wasmInstance: null,
     importObject: {
-        wasi_unstable: {
-            fd_write: wasi_fd_write,
-            proc_exit: () => {},
-        }
-    }
+        wasi_unstable: WASI_importObject,
+        wasi_snapshot_preview1: WASI_importObject,
+        env: {
+            emscripten_memcpy_big: () => {},
+        },
+    },
 }
 
 function encodeString(text) {
@@ -156,7 +216,7 @@ async function main(wast) {
     WebAssembly.instantiate(buffer,wasi.importObject).then(res=>{
         console.log(res);
         wasi.wasmInstance=res.instance;
-        wasi.wasmInstance.exports._start();
+        wasi.wasmInstance.exports._start?wasi.wasmInstance.exports._start():wasi.wasmInstance.exports.main?wasi.wasmInstance.exports.main():(()=>{throw `Entry point not Found: _start() or main()`})();
         console.log(new Uint8Array(wasi.wasmInstance.exports.memory.buffer));
         console.log(new Uint32Array(wasi.wasmInstance.exports.memory.buffer));
     }).catch((err)=>{console.error(err);document.getElementById("stdout").value=err.toString()});
@@ -180,13 +240,14 @@ require(["vs/editor/editor.main"], function () {
         ],
         tokenizer: {
             root: [
+                [/\(\;(\\.|[^\)\\])*\;\)/, "comment"],
                 [/[{}()<>\[\]]/, '@brackets'],
                 [/"(\\.|[^"\\])*"/, "string"],
                 [/'(\\.|[^"\\])*'/, "string"],
                 [/0[xX][0-9a-fA-F]+/, 'number'],
                 [/\d+/, 'number'],
                 [/\$([0-9a-zA-Z]|_)*/, "variable"],
-                [/(module|import|export|memory|data|func|call|param|result)/, "keyword"],
+                [/(module|import|export|memory|data|table|elem|func|type|call|param|result)/, "keyword"],
                 [/(br_if|br|if|then|block|loop)/, "keyword.control"],
                 [/(local|global)/, "type"],
                 [/(i32|i64|f32|f64)/, "type"],
@@ -208,13 +269,24 @@ require(["vs/editor/editor.main"], function () {
         automaticLayout: true,
         wordWrap: false,
         tabSize: 4,
+        fontSize: 12,
     });
 });
+
+
+document.addEventListener("keydown",(e)=>{
+    console.log("keydown",e.keyCode)
+    if (e.keyCode == 82 && e.ctrlKey && !e.shiftKey) {
+        update();
+        e.preventDefault();
+    }
+},false);
 </script>
 <style>
     body {
         color: white;
         background-color: rgb(0, 29, 54);
+        margin: 0;
     }
     button {
         color: white;
@@ -223,16 +295,18 @@ require(["vs/editor/editor.main"], function () {
         height: 30px;
         border-radius: 10px;
         border: 1px solid gray;
+        margin: 5px;
     }
     .input {
-        height: calc(40dvh - 80px);
+        height: calc(100% - 40px);
     }
     .output {
+        font-size: 12px;
         color: white;
         font-family: Consolas, "Courier New", monospace;
         background-color: rgb(30, 30, 30);
-        width: calc(100% - 30px);
-        height: calc(25dvh);
+        width: calc(100% - 20px);
+        height: calc(100% - 20px);
         outline: none;
         border: none;
         resize: none;
@@ -243,6 +317,7 @@ require(["vs/editor/editor.main"], function () {
         display: flex;
         & table {
             font-family: Courier, monospace;
+            height: fit-content;
             & td {
                 padding-right: 3px;
                 padding-left: 3px;
@@ -253,4 +328,59 @@ require(["vs/editor/editor.main"], function () {
             }
         }
     }
+    
+    #mainarea {
+        height: 100dvh;
+        width: 100dvw;
+    }
+</style>
+<style>
+
+/* resizer */
+.resizer_Vcontainer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    & > .resizer_content {
+        min-height: 0px;
+        height: 100%;
+        overflow: hidden;
+        padding: 3px;
+    }
+    & > .resizer_splitter {
+        height: 5px;
+        margin: 2px;
+        width: calc(100% - 10px);
+        border-radius: 3px;
+        flex: none;
+        cursor: row-resize;
+        background-color: #7c7c7c;
+    }
+    & > .resizer_splitter:hover {
+        background-color: #acacac;
+    }
+}
+.resizer_Hcontainer {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+    & > .resizer_content {
+        min-width: 0px;
+        width: 100%;
+        overflow: hidden;
+        padding: 3px;
+    }
+    & > .resizer_splitter {
+        width: 5px;
+        margin: 2px;
+        height: calc(100% - 10px);
+        border-radius: 3px;
+        flex: none;
+        cursor: col-resize;
+        background-color: #7c7c7c;
+    }
+    & > .resizer_splitter:hover {
+        background-color: #acacac;
+    }
+}
 </style>
